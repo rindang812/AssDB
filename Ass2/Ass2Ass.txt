@@ -1,0 +1,253 @@
+1)
+create proc addOrderAss
+	@makhachhang varchar(10),
+	@tongsanpham int,
+	@tonggiatien decimal(10,0),
+	
+	@result varchar(50) out
+as
+begin
+	declare @sodonhang int
+	declare @madonhang varchar(10)
+	declare @trangthai varchar(50)
+	declare @diachigui varchar(100)
+	declare @diachinhan varchar(100)
+	set @sodonhang = 0
+	set @sodonhang=@sodonhang+1
+	set @madonhang = 'DH'+CAST( @sodonhang as varchar)
+	while (@madonhang in (select madonhang from tblDH))
+	begin
+		set @sodonhang=@sodonhang+1
+		set @madonhang = 'DH'+CAST( @sodonhang as varchar)
+	end
+	if (not exists (select * from tblKH where makhachhang=@makhachhang))
+	begin
+		set @result ='Ma khach hang khong hop le'
+		return
+	end
+	set @trangthai ='dangxacnhan'
+	if (@tongsanpham<0)
+	begin
+		set @result ='Tong san pham khong hop le'
+		return
+	end
+	if (@tonggiatien<0)
+	begin
+		set @result ='Tong gia tien khong hop le'
+		return
+	end
+	set @diachigui=null
+	set @diachinhan=null
+	insert into tblDH(madonhang,trangthai,makhachhang,tongsanpham,tonggiatien,diachigui,diachinhan)
+	values(@madonhang,@trangthai,@makhachhang,@tongsanpham,@tonggiatien,@diachigui,@diachinhan)
+	set @result ='Them don hang thanh cong'
+end
+
+select * from tblDH
+
+declare @message varchar(100)
+exec addOrderAss '4324213213',0,0,@message out
+print @message
+
+select * from tblKH
+
+2)
+a)
+-- Trigger cap nhat diachigiao va diachinhan
+create trigger capnhatNoiGiaoNoiNhanAss
+on tblDH
+for insert
+as
+begin
+	declare @diachinhan varchar(100)
+	declare @diachigui varchar(100)
+	declare @makhachhang varchar(50)
+	declare @madonhang varchar(50)
+	declare @madoitac varchar(10)
+	set @diachigui=''
+	if (exists (select * from inserted))
+	begin
+		set @makhachhang =(select makhachhang from inserted)
+		set @diachinhan =(select diachi from tblKH where makhachhang=@makhachhang)
+		update tblDH set diachinhan=@diachinhan where makhachhang=@makhachhang
+		set @madonhang =(select madonhang from inserted)
+		declare cursorAddress CURSOR FOR select madoitac from tblDTDH where @madonhang=madonhang
+		open cursorAddress
+		fetch next from cursorAddress into @madoitac
+		while @@FETCH_STATUS=0
+		begin
+			set @diachigui = @diachigui + (select diachi from tblDT where madoitac=@madoitac)+ ' '
+			fetch next from cursorAddress into @madoitac
+		end
+		update tblDH set diachigui=@diachigui where makhachhang=@makhachhang
+		close cursorAddress
+		deallocate cursorAddress
+
+	end
+	
+
+end
+
+
+declare @message varchar(100)
+exec addOrderAss '4324213213',0,0,@message out
+print @message
+select * from tblKH
+select * from tblDH
+b)
+
+-- Trigger cap nhat tong tien va so luong trong bang Don Hang
+create trigger capnhatSoLuongTongTienAss
+on tblSPDHDT
+for delete,insert
+as
+begin
+	declare @madoitac varchar(10)
+	declare @madonhang varchar(10)
+	declare @masanpham varchar(10)
+	declare @giasaucung decimal(10,0)
+	declare @tongtien decimal(10,0)
+	declare @soluong int
+	declare @tongsanpham int
+	if (exists (select * from inserted))
+	begin
+		set @madoitac = (select madoitac from inserted)
+		set @madonhang = (select madonhang from inserted)
+		set @masanpham = (select masanpham from inserted)
+		set @giasaucung = (select giakhuyenmai from inserted)
+		set @soluong = (select soluong from inserted)
+		if (@giasaucung=0)
+		begin
+			set @giasaucung = (select gianiemyet from tblDMDT where madoitac=@madoitac and masanpham=@masanpham)
+		end
+		
+		set @tongsanpham = (select tongsanpham from tblDH where madonhang=@madonhang)
+		set @tongsanpham=@tongsanpham+@soluong
+		set @giasaucung=@giasaucung*@soluong
+		set @tongtien =(select tonggiatien from tblDH where madonhang=@madonhang)
+		set @tongtien=@tongtien+@giasaucung
+		update tblDH set tonggiatien=@tongtien where madonhang=@madonhang
+		update tblDH set tongsanpham=@tongsanpham where madonhang=@madonhang
+	end
+	if (exists (select * from deleted))
+	begin
+		set @madoitac = (select madoitac from deleted)
+		set @madonhang = (select madonhang from deleted)
+		set @masanpham = (select masanpham from deleted)
+		set @giasaucung = (select giakhuyenmai from deleted)
+		set @soluong = (select soluong from deleted)
+		if (@giasaucung=0)
+		begin
+			set @giasaucung = (select gianiemyet from tblDMDT where madoitac=@madoitac and masanpham=@masanpham)
+		end
+		set @giasaucung=@giasaucung*@soluong
+		
+		set @tongsanpham = (select tongsanpham from tblDH where madonhang=@madonhang)
+		set @tongsanpham=@tongsanpham-@soluong
+		
+		set @tongtien =(select tonggiatien from tblDH where madonhang=@madonhang)
+		set @tongtien=@tongtien-@giasaucung
+		update tblDH set tonggiatien=@tongtien where madonhang=@madonhang
+		update tblDH set tongsanpham=@tongsanpham where madonhang=@madonhang
+	end
+	
+end
+
+select * from tblSPDHDT
+select * from tblDMDT
+select *from tblDH
+insert into tblSPDHDT(madonhang,madoitac,masanpham,soluong,giakhuyenmai)
+values ('DH1','DT1','SP1',8,0)
+
+delete from tblSPDHDT where madonhang='DH1' and masanpham='SP1'
+
+3)
+a)
+-- Nhap vao dia chi xuat ra thong tin khach hang va don hang ma nguoi o noi do da mua
+create proc Cau3aAss
+	@diachi varchar(100)
+as
+begin
+	select B.hoten,A.madonhang,A.trangthai,A.tonggiatien
+	from tblDH as A join tblKH as B on A.makhachhang=B.makhachhang
+	where A.diachinhan=@diachi
+	order by tonggiatien asc
+end
+
+select * from tblDH
+select * from tblKH
+exec Cau3aAss 'Tien Giang'
+b)
+-- Nhap vao dia chi xuat ra tong tien tat ca don hang ma khach hang da mua neu tong tien > 500000
+
+create proc Cau3bAss
+	@diachi varchar(100)
+as
+begin
+	select B.hoten,sum(A.tonggiatien) as total
+	from tblDH as A join tblKH as B on A.makhachhang=B.makhachhang
+	where A.diachinhan=@diachi
+	group by B.hoten
+	having sum(A.tonggiatien) >= 500000
+	order by total asc
+end
+exec Cau3bAss 'Tien Giang'
+4)
+a)
+-- Nhap vao tong tien, dem co bao nhieu don hang co tong tien >= tong tien do
+create function Cau4aAss(@tongtien decimal (10,0))
+returns int
+as
+begin
+	declare @numOrder int
+	declare @temp decimal(10,0)
+	declare cursorOrder CURSOR FOR select tonggiatien from tblDH
+	open cursorOrder
+	set @numOrder=0
+	fetch next from cursorOrder into @temp
+	while @@FETCH_STATUS=0
+	begin
+		if (@temp>=@tongtien)
+		begin
+			set @numOrder=@numOrder+1
+		end
+		fetch next from cursorOrder into @temp
+	end
+	close cursorOrder
+	deallocate cursorOrder
+	return @numOrder
+end
+
+select dbo.Cau4aAss(250000)
+
+select * from tblDH
+b)
+-- Nhap vao ma khach hang, tinh tong tien ma khach hang do da mua
+create function Cau4bAss(@makhachhang varchar(10))
+returns int
+as
+begin
+	declare @tongtien decimal(10,0)
+	declare @temp decimal(10,0)
+	declare cursorOrder CURSOR FOR select tonggiatien from tblDH where makhachhang=@makhachhang
+	open cursorOrder
+	set @tongtien=0
+	fetch next from cursorOrder into @temp
+	while @@FETCH_STATUS=0
+	begin
+		
+		set @tongtien=@tongtien+@temp
+		fetch next from cursorOrder into @temp
+	end
+	close cursorOrder
+	deallocate cursorOrder
+	return @tongtien
+end
+
+select dbo.Cau4bAss('2134324342')
+
+select * from tblDH
+select * from tblKH
+
+
+

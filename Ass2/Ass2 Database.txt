@@ -1,0 +1,235 @@
+﻿1)
+alter procedure Cau1RyynThemDoiTac
+	@madoitac varchar(10),
+	@tencuahang nvarchar(100),
+	@hoten		nvarchar(100),
+	@ngaysinh	date,
+	@email		varchar(100),
+	@sodienthoai	varchar(10),
+	@mskd			varchar(10),
+	@diachi		nvarchar(100),
+	@result		varchar(50) out
+
+as
+begin
+	
+	if (@madoitac in (select madoitac from tblDT))
+	begin
+		
+		set @result = 'Ma doi tac da ton tai'
+		return
+	end
+	if (@email in (select email from tblDT))
+	begin
+		set @result = 'Email da ton tai'
+		return
+	end
+	declare @countPhoneNumber int 
+	set @countPhoneNumber = len(@sodienthoai)
+	if @countPhoneNumber!=10
+	begin
+		set @result ='So dien thoai phai co 10 chu so'
+		return
+	end
+	declare @checkPhoneNumber int
+	set @checkPhoneNumber=(select 1 where @sodienthoai like '%[^0-9]%')
+	if (@checkPhoneNumber=1)
+	begin
+		set @result = 'So dien thoai nhap vao khong hop le'
+		return
+	end
+
+	
+	declare @checkValidEmail int
+	set @checkValidEmail = (select 1 where @email not like '%@gmail.com')
+	if (@checkValidEmail=1)
+	begin
+		set @result ='Email nhap vao khong hop le'
+		return
+	end
+	insert into tblDT (madoitac,tencuahang,hoten,ngaysinh,email,sodienthoai,mskd,diachi)
+	values(@madoitac,@tencuahang,@hoten,@ngaysinh,@email,@sodienthoai,@mskd,@diachi)
+	set @result ='Them doi tac ban hang thanh cong'
+			
+end
+
+2)
+a)
+create trigger Cau2ARyyncheckAgeDT
+on tblDT
+for insert,update
+as
+begin
+	if (exists (select * from inserted where year(getdate())-year(inserted.ngaysinh)<18))
+	begin 
+		print 'Doi tac ban hang phai lon hon 18 tuoi'
+		rollback tran
+	end
+end
+
+declare @message varchar(100)
+exec Cau1RyynThemDoiTac 'DT6','cuahangtesttrigger','Nguyen thi c','5/5/2014','nguyenthic@gmail.com','3234324233','5435433424','Ho Chi Minh',@message out
+print @message
+b)
+create trigger Cau2BRyynCheckQuantity
+on tblSPDHDT
+for insert,delete
+as
+begin
+	declare @soluongtrongkho int
+	
+	declare @masanpham varchar(10)
+	declare @madoitac varchar(10)
+	if (exists (select * from inserted))
+	begin
+		declare @soluongkhachdat int
+		set @soluongkhachdat =(select soluong from inserted)
+		set @madoitac = (select madoitac from inserted)
+		set @masanpham = (select masanpham from inserted)
+		set @soluongtrongkho = (select soluong from tblDMDT where @madoitac=madoitac and @masanpham=masanpham)
+		if (@soluongkhachdat>@soluongtrongkho)
+		begin
+			print 'Trong kho khong con du so luong'
+			rollback tran
+		end
+		else
+		begin
+			update tblDMDT set soluong=@soluongtrongkho-@soluongkhachdat where masanpham=@masanpham and madoitac=@madoitac
+		end
+	end
+	if (exists (select * from deleted))
+	begin
+		declare @soluongkhachhuy int
+		set @soluongkhachhuy=(select soluong from deleted)
+		set @madoitac = (select madoitac from deleted)
+		set @masanpham = (select masanpham from deleted)
+		set @soluongtrongkho = (select soluong from tblDMDT where @madoitac=madoitac and @masanpham=masanpham)
+		update tblDMDT set soluong=@soluongtrongkho+@soluongkhachhuy where masanpham=@masanpham and madoitac=@madoitac
+	end
+end
+
+
+insert into tblSPDHDT(madonhang,madoitac,masanpham,soluong,giakhuyenmai)
+values ('DH1','DT1','SP4','200',0)
+
+select * from tblSPDHDT
+select * from tblDH
+select * from tblDMDT
+
+
+
+
+3)
+a)
+--Xuat ra nhung san pham ma doi tac do da ban
+create proc Cau3ARyyngetNameProduct
+	@madoitac varchar(10)
+as
+begin
+	select madoitac,madonhang,tensanpham
+	from tblSPDHDT as A join tblSP as B on B.masanpham=A.masanpham
+	where A.madoitac=@madoitac
+	order by madoitac asc
+end
+
+
+exec Cau3ARyyngetNameProduct 'DT1'
+b)
+-- Lay thong tin cua khach hang da dat n don hang tro len 
+create proc Cau3BRyynprintCustomers
+	@numOrder int
+as
+begin
+	select A.makhachhang,A.hoten,A.sodienthoai,A.diachi, count (*) as numOrder
+	from tblKH as A join tblDH as B on A.makhachhang = B.makhachhang
+	group by A.makhachhang,A.hoten,A.sodienthoai,A.diachi
+	having count(*)>@numOrder
+	order by A.hoten asc
+end
+4)
+a)
+-- Dem so luong khach hang theo khoang do tuoi
+create function countCustomersConditionAge(@ageFrom int,@ageTo int)
+returns int
+begin
+	declare @ngaysinh date
+	declare @numCustomers int
+	set @numCustomers=0
+	declare cursorAge CURSOR FOR select ngaysinh from tblKH
+	open cursorAge
+	fetch next from cursorAge into @ngaysinh
+	while @@FETCH_STATUS=0
+	begin
+		if (year(GETDATE())-year(@ngaysinh) >= @ageFrom and year(GETDATE())-year(@ngaysinh) <= @ageTo)
+		begin
+			set @numCustomers=@numCustomers+1
+			
+		end
+		fetch next from cursorAge into @ngaysinh
+
+	end
+	close cursorAge
+	deallocate cursorAge
+	return @numCustomers
+end
+
+
+select * from tblKH
+select dbo.countCustomersConditionAge(15,50)
+b)
+--Dem so luong khach hang da hoan thanh bao nhieu don hang
+create function countCustomersConditionOrder(@numOrder int)
+returns int
+begin
+	declare @numCustommers int
+	declare @trangthai varchar(50)
+	set @numCustommers =0
+	declare cursorOrder CURSOR FOR select trangthai from tblDH
+	open cursorOrder
+	fetch next from cursorOrder into @trangthai
+	while @@FETCH_STATUS=0
+	begin
+		if (@trangthai='dagiao')
+		begin
+			set @numCustommers=@numCustommers+1
+		end
+		fetch next from cursorOrder into @trangthai
+
+	end
+	close cursorOrder
+	deallocate cursorOrder
+	return @numCustommers
+end
+
+select dbo.countCustomersConditionOrder()
+
+
+create function countCompletedOrderRyyn(@madoitac varchar(10))
+returns int
+begin
+	declare @numOrders int
+	declare @madonhang varchar(10)
+	declare @trangthai varchar(50)
+	set @numOrders =0
+	declare cursorOrder CURSOR FOR select madonhang from tblDTDH where madoitac=@madoitac
+	open cursorOrder
+	fetch next from cursorOrder into @madonhang
+	while @@FETCH_STATUS=0
+	begin
+		set @trangthai = (select trangthai from tblDH where madonhang=@madonhang)
+		if (@trangthai='dagiao')
+		begin
+			set @numOrders=@numOrders+1
+		end
+		fetch next from cursorOrder into @madonhang
+
+	end
+	close cursorOrder
+	deallocate cursorOrder
+	return @numOrders
+end
+
+select dbo.countCompletedOrderRyyn('DT2')
+
+
+
